@@ -31,24 +31,24 @@ import (
 // timestamping
 // wgetrc
 type Wgetter struct {
-	IsContinue     bool
+	IsContinue bool
 	// should be set explicitly to false when running from CLI. uggo will detect as best as possible
-	AlwaysPipeStdin   bool
-	OutputFilename string
-	Timeout        int //TODO
-	Retries        int //TODO
-	IsVerbose      bool //todo
-	DefaultPage    string
-	UserAgent      string //todo
-	ProxyUser	string //todo
-	ProxyPassword	string //todo
-	Referer		string //todo
-	SaveHeaders	bool //todo
-	PostData	string //todo
-	HttpUser	string //todo
-	HttpPassword    string //todo
+	AlwaysPipeStdin      bool
+	OutputFilename       string
+	Timeout              int  //TODO
+	Retries              int  //TODO
+	IsVerbose            bool //todo
+	DefaultPage          string
+	UserAgent            string //todo
+	ProxyUser            string //todo
+	ProxyPassword        string //todo
+	Referer              string //todo
+	SaveHeaders          bool   //todo
+	PostData             string //todo
+	HttpUser             string //todo
+	HttpPassword         string //todo
 	IsNoCheckCertificate bool
-	SecureProtocol string
+	SecureProtocol       string
 
 	links []string
 }
@@ -76,7 +76,7 @@ func Wget(urls ...string) *Wgetter {
 }
 
 // CLI invocation for wgetter
-func WgetCli(directory string,call []string) (error, int) {
+func WgetCli(directory string, call []string, fileName string) (error, int) {
 	inPipe := os.Stdin
 	outPipe := os.Stdout
 	errPipe := os.Stderr
@@ -86,20 +86,21 @@ func WgetCli(directory string,call []string) (error, int) {
 	if err != nil {
 		return err, code
 	}
-	return wgetter.Exec(directory,inPipe, outPipe, errPipe)
+	return wgetter.Exec(directory,fileName, inPipe, outPipe, errPipe)
 }
 
 // Name() returns the name of the util
 func (tail *Wgetter) Name() string {
 	return "wget"
 }
+
 // Parse CLI flags
 func (w *Wgetter) ParseFlags(call []string, errPipe io.Writer) (error, int) {
 
 	flagSet := uggo.NewFlagSetDefault("wget", "[options] URL", VERSION)
 	flagSet.SetOutput(errPipe)
 	flagSet.AliasedBoolVar(&w.IsContinue, []string{"c", "continue"}, false, "continue")
-	flagSet.AliasedStringVar(&w.OutputFilename, []string{"O","output-document"}, "", "specify filename")
+	flagSet.AliasedStringVar(&w.OutputFilename, []string{"O", "output-document"}, "", "specify filename")
 	flagSet.StringVar(&w.DefaultPage, "default-page", "index.html", "default page name")
 	flagSet.BoolVar(&w.IsNoCheckCertificate, "no-check-certificate", false, "skip certificate checks")
 
@@ -134,10 +135,10 @@ func (w *Wgetter) ParseFlags(call []string, errPipe io.Writer) (error, int) {
 }
 
 // Perform the wget ...
-func (w *Wgetter) Exec(directory string,inPipe io.Reader, outPipe io.Writer, errPipe io.Writer) (error, int) {
+func (w *Wgetter) Exec(directory, fileName string, inPipe io.Reader, outPipe io.Writer, errPipe io.Writer) (error, int) {
 	if len(w.links) > 0 {
 		for _, link := range w.links {
-			err := wgetOne(directory,link, w, outPipe, errPipe)
+			err := wgetOne(directory, fileName, link, w, outPipe, errPipe)
 			if err != nil {
 				return err, 1
 			}
@@ -151,7 +152,7 @@ func (w *Wgetter) Exec(directory string,inPipe io.Reader, outPipe io.Writer, err
 			line, hasMoreInLine, err = bio.ReadLine()
 			if err == nil {
 				//line from stdin
-				err = wgetOne(directory,strings.TrimSpace(string(line)), w, outPipe, errPipe)
+				err = wgetOne(directory, fileName, strings.TrimSpace(string(line)), w, outPipe, errPipe)
 
 				if err != nil {
 					return err, 1
@@ -175,7 +176,7 @@ func tidyFilename(filename, defaultFilename string) string {
 	return filename
 }
 
-func wgetOne(directory,link string, options *Wgetter, outPipe io.Writer, errPipe io.Writer) error {
+func wgetOne(directory, name, link string, options *Wgetter, outPipe io.Writer, errPipe io.Writer) error {
 	if !strings.Contains(link, ":") {
 		link = "http://" + link
 	}
@@ -270,7 +271,7 @@ func wgetOne(directory,link string, options *Wgetter, outPipe io.Writer, errPipe
 	fmt.Fprintf(errPipe, "Content-Length: %v Content-Type: %s\n", lenS, typ)
 
 	if filename == "" {
-		filename, err = getFilename(directory,request, resp, options, errPipe)
+		filename, err = getFilename(directory, name, request, resp, options, errPipe)
 		if err != nil {
 			return err
 		}
@@ -379,13 +380,17 @@ func progress(perc int64) string {
 	return prog
 }
 
-func getFilename(directory string, request *http.Request, resp *http.Response, options *Wgetter, errPipe io.Writer) (string, error) {
+func getFilename(directory, name string, request *http.Request, resp *http.Response, options *Wgetter, errPipe io.Writer) (string, error) {
 	filename := filepath.Base(request.URL.Path)
 	if !strings.Contains(filename, ".") {
 		//original link didnt represent the file type. Try using the response url (after redirects)
 		filename = filepath.Base(resp.Request.URL.Path)
 	}
-	filename =directory+"/"+ filename
+	//使用外部传递进来的url来替换url中解析出来的文件名
+	if len(name) > 0 {
+		filename = name
+	}
+	filename = directory + "/" + filename
 
 	filename = tidyFilename(filename, options.DefaultPage)
 
@@ -406,7 +411,7 @@ func getFilename(directory string, request *http.Request, resp *http.Response, o
 				}
 			}
 		}
-		filename =filename + "." + ext
+		filename = filename + "." + ext
 	}
 	_, err := os.Stat(filename)
 	if err != nil {
