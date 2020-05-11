@@ -2,11 +2,11 @@
 package wget
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"github.com/laher/uggo"
 	"io"
-	"math"
 	"mime"
 	"net/http"
 	"os"
@@ -77,7 +77,8 @@ func Wget(urls ...string) *Wgetter {
 
 // CLI invocation for wgetter
 func WgetCli(directory string,call []string) (error, int) {
-
+	inPipe := os.Stdin
+	outPipe := os.Stdout
 	errPipe := os.Stderr
 	wgetter := new(Wgetter)
 	wgetter.AlwaysPipeStdin = false
@@ -85,7 +86,7 @@ func WgetCli(directory string,call []string) (error, int) {
 	if err != nil {
 		return err, code
 	}
-	return wgetter.Exec(directory,  errPipe)
+	return wgetter.Exec(directory,inPipe, outPipe, errPipe)
 }
 
 // Name() returns the name of the util
@@ -133,25 +134,33 @@ func (w *Wgetter) ParseFlags(call []string, errPipe io.Writer) (error, int) {
 }
 
 // Perform the wget ...
-func (w *Wgetter) Exec(directory string, errPipe io.Writer) (error, int) {
+func (w *Wgetter) Exec(directory string,inPipe io.Reader, outPipe io.Writer, errPipe io.Writer) (error, int) {
 	if len(w.links) > 0 {
 		for _, link := range w.links {
-			err := wgetOne(directory,link, w, errPipe)
+			err := wgetOne(directory,link, w, outPipe, errPipe)
 			if err != nil {
 				return err, 1
 			}
 		}
 	} else {
+		bio := bufio.NewReader(inPipe)
+		hasMoreInLine := true
 		var err error
 		var line []byte
+		for hasMoreInLine {
+			line, hasMoreInLine, err = bio.ReadLine()
+			if err == nil {
+				//line from stdin
+				err = wgetOne(directory,strings.TrimSpace(string(line)), w, outPipe, errPipe)
 
-		//line from stdin
-		err = wgetOne(directory,strings.TrimSpace(string(line)), w,errPipe)
-
-		if err != nil {
-			return err, 1
+				if err != nil {
+					return err, 1
+				}
+			} else {
+				//finish
+				hasMoreInLine = false
+			}
 		}
-
 
 	}
 	return nil, 0
@@ -166,7 +175,7 @@ func tidyFilename(filename, defaultFilename string) string {
 	return filename
 }
 
-func wgetOne(directory,link string, options *Wgetter, errPipe io.Writer) error {
+func wgetOne(directory,link string, options *Wgetter, outPipe io.Writer, errPipe io.Writer) error {
 	if !strings.Contains(link, ":") {
 		link = "http://" + link
 	}
@@ -291,8 +300,10 @@ func wgetOne(directory,link string, options *Wgetter, errPipe io.Writer) error {
 		}
 		defer outFile.Close()
 		out = outFile
+	} else {
+		//save to outPipe
+		out = outPipe
 	}
-
 	buf := make([]byte, 4068)
 	tot := int64(0)
 	i := 0
@@ -313,26 +324,26 @@ func wgetOne(directory,link string, options *Wgetter, errPipe io.Writer) error {
 			return err
 		}
 		i += 1
-		if length > -1 {
-			if length < 1 {
-				fmt.Fprintf(errPipe, "\r     [ <=>                                  ] %d\t-.--KB/s eta ?s             ", tot)
-			} else {
-				//show percentage
-				perc := (100 * tot) / length
-				prog := progress(perc)
-				nowTime := time.Now()
-				totTime := nowTime.Sub(startTime)
-				spd := float64(tot/1000) / totTime.Seconds()
-				remKb := float64(length-tot) / float64(1000)
-				eta := remKb / spd
-				fmt.Fprintf(errPipe, "\r%3d%% [%s] %d\t%0.2fKB/s eta %0.1fs             ", perc, prog, tot, spd, eta)
-			}
-		} else {
-			//show dots
-			if math.Mod(float64(i), 20) == 0 {
-				fmt.Fprint(errPipe, ".")
-			}
-		}
+		//if length > -1 {
+		//	if length < 1 {
+		//		fmt.Fprintf(errPipe, "\r     [ <=>                                  ] %d\t-.--KB/s eta ?s             ", tot)
+		//	} else {
+		//		//show percentage
+		//		perc := (100 * tot) / length
+		//		prog := progress(perc)
+		//		nowTime := time.Now()
+		//		totTime := nowTime.Sub(startTime)
+		//		spd := float64(tot/1000) / totTime.Seconds()
+		//		remKb := float64(length-tot) / float64(1000)
+		//		eta := remKb / spd
+		//		fmt.Fprintf(errPipe, "\r%3d%% [%s] %d\t%0.2fKB/s eta %0.1fs             ", perc, prog, tot, spd, eta)
+		//	}
+		//} else {
+		//	//show dots
+		//	if math.Mod(float64(i), 20) == 0 {
+		//		fmt.Fprint(errPipe, ".")
+		//	}
+		//}
 	}
 	nowTime := time.Now()
 	totTime := nowTime.Sub(startTime)
