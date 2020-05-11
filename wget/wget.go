@@ -34,7 +34,7 @@ import (
 type Wgetter struct {
 	IsContinue     bool
 	// should be set explicitly to false when running from CLI. uggo will detect as best as possible
-	AlwaysPipeStdin   bool 
+	AlwaysPipeStdin   bool
 	OutputFilename string
 	Timeout        int //TODO
 	Retries        int //TODO
@@ -77,7 +77,7 @@ func Wget(urls ...string) *Wgetter {
 }
 
 // CLI invocation for wgetter
-func WgetCli(call []string) (error, int) {
+func WgetCli(directory string,call []string) (error, int) {
 	inPipe := os.Stdin
 	outPipe := os.Stdout
 	errPipe := os.Stderr
@@ -87,7 +87,7 @@ func WgetCli(call []string) (error, int) {
 	if err != nil {
 		return err, code
 	}
-	return wgetter.Exec(inPipe, outPipe, errPipe)
+	return wgetter.Exec(directory,inPipe, outPipe, errPipe)
 }
 
 // Name() returns the name of the util
@@ -135,33 +135,33 @@ func (w *Wgetter) ParseFlags(call []string, errPipe io.Writer) (error, int) {
 }
 
 // Perform the wget ...
-func (w *Wgetter) Exec(inPipe io.Reader, outPipe io.Writer, errPipe io.Writer) (error, int) {
+func (w *Wgetter) Exec(directory string,inPipe io.Reader, outPipe io.Writer, errPipe io.Writer) (error, int) {
 	if len(w.links) > 0 {
 		for _, link := range w.links {
-			err := wgetOne(link, w, outPipe, errPipe)
+			err := wgetOne(directory,link, w, outPipe, errPipe)
 			if err != nil {
 				return err, 1
 			}
 		}
 	} else {
-			bio := bufio.NewReader(inPipe)
-			hasMoreInLine := true
-			var err error
-			var line []byte
-			for hasMoreInLine {
-				line, hasMoreInLine, err = bio.ReadLine()
-				if err == nil {
-					//line from stdin
-					err = wgetOne(strings.TrimSpace(string(line)), w, outPipe, errPipe)
+		bio := bufio.NewReader(inPipe)
+		hasMoreInLine := true
+		var err error
+		var line []byte
+		for hasMoreInLine {
+			line, hasMoreInLine, err = bio.ReadLine()
+			if err == nil {
+				//line from stdin
+				err = wgetOne(directory,strings.TrimSpace(string(line)), w, outPipe, errPipe)
 
-					if err != nil {
-						return err, 1
-					}
-				} else {
-					//finish
-					hasMoreInLine = false
+				if err != nil {
+					return err, 1
 				}
+			} else {
+				//finish
+				hasMoreInLine = false
 			}
+		}
 
 	}
 	return nil, 0
@@ -176,7 +176,7 @@ func tidyFilename(filename, defaultFilename string) string {
 	return filename
 }
 
-func wgetOne(link string, options *Wgetter, outPipe io.Writer, errPipe io.Writer) error {
+func wgetOne(directory,link string, options *Wgetter, outPipe io.Writer, errPipe io.Writer) error {
 	if !strings.Contains(link, ":") {
 		link = "http://" + link
 	}
@@ -271,7 +271,7 @@ func wgetOne(link string, options *Wgetter, outPipe io.Writer, errPipe io.Writer
 	fmt.Fprintf(errPipe, "Content-Length: %v Content-Type: %s\n", lenS, typ)
 
 	if filename == "" {
-		filename, err = getFilename(request, resp, options, errPipe)
+		filename, err = getFilename(directory,request, resp, options, errPipe)
 		if err != nil {
 			return err
 		}
@@ -380,13 +380,14 @@ func progress(perc int64) string {
 	return prog
 }
 
-func getFilename(request *http.Request, resp *http.Response, options *Wgetter, errPipe io.Writer) (string, error) {
+func getFilename(directory string, request *http.Request, resp *http.Response, options *Wgetter, errPipe io.Writer) (string, error) {
 	filename := filepath.Base(request.URL.Path)
-
 	if !strings.Contains(filename, ".") {
 		//original link didnt represent the file type. Try using the response url (after redirects)
 		filename = filepath.Base(resp.Request.URL.Path)
 	}
+	filename =directory+"/"+ filename
+
 	filename = tidyFilename(filename, options.DefaultPage)
 
 	if !strings.Contains(filename, ".") {
@@ -406,7 +407,7 @@ func getFilename(request *http.Request, resp *http.Response, options *Wgetter, e
 				}
 			}
 		}
-		filename = filename + "." + ext
+		filename =filename + "." + ext
 	}
 	_, err := os.Stat(filename)
 	if err != nil {
