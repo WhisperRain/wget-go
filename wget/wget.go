@@ -416,20 +416,21 @@ func getFilename(directory string, request *http.Request, resp *http.Response, o
 			return "", err
 		}
 	} else {
-		num := 1
-		//just stop after 100
-		for num < 100 {
-			filenameNew := filename + "." + strconv.Itoa(num)
-			_, err := os.Stat(filenameNew)
-			if err != nil {
-				if os.IsNotExist(err) {
-					return filenameNew, nil
-				} else {
-					return "", err
-				}
-			}
-			num += 1
-		}
-		return filename, errors.New("Stopping after trying 100 filename variants")
+		return filename, errors.New("filename duplicate")
+		//num := 1
+		////just stop after 100
+		//for num < 100 {
+		//	filenameNew := filename + "." + strconv.Itoa(num)
+		//	_, err := os.Stat(filenameNew)
+		//	if err != nil {
+		//		if os.IsNotExist(err) {
+		//			return filenameNew, nil
+		//		} else {
+		//			return "", err
+		//		}
+		//	}
+		//	num += 1
+		//}
+		//return filename, errors.New("Stopping after trying 100 filename variants")
 	}
 }
